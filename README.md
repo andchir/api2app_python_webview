@@ -1,0 +1,12 @@
+# api2app WebView app
+
+Install:
+~~~
+sudo apt install git build-essential pkg-config python3-dev libgirepository-2.0-dev libcairo2-dev gir1.2-gtk-3.0 libcanberra-gtk3-module
+~~~
+
+~~~
+python3.12 -m venv venv
+. venv/bin/activate
+pip install -r requirements.txt
+~~~
