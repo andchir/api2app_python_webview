@@ -2,7 +2,7 @@
 
 Install:
 ~~~
-sudo apt install git build-essential pkg-config python3-dev libgirepository-2.0-dev libcairo2-dev gir1.2-gtk-3.0 libcanberra-gtk3-module
+sudo apt install build-essential pkg-config libgirepository-2.0-dev libcairo2-dev gir1.2-gtk-3.0 libcanberra-gtk3-module
 ~~~
 
 ~~~
