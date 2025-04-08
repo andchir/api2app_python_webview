@@ -21,9 +21,15 @@ Build for Android:
 ~~~
 briefcase create android
 briefcase build android
+briefcase package android
 ~~~
 
 Run the app on a virtual device:
 ~~~
 briefcase run android
+~~~
+
+Create icons:
+~~~
+https://makeappicon.com/
 ~~~
