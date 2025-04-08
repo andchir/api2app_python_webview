@@ -11,3 +11,18 @@ python3.12 -m venv venv
 . venv/bin/activate
 pip install -r requirements.txt
 ~~~
+
+Run in dev mode:
+~~~
+briefcase dev
+~~~
+
+Build for Android:
+~~~
+briefcase create android
+~~~
+
+Run the app on a virtual device:
+~~~
+briefcase run android
+~~~
