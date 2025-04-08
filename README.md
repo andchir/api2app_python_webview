@@ -20,6 +20,7 @@ briefcase dev
 Build for Android:
 ~~~
 briefcase create android
+briefcase build android
 ~~~
 
 Run the app on a virtual device:
