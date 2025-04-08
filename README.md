@@ -33,3 +33,8 @@ Create icons:
 ~~~
 https://makeappicon.com/
 ~~~
+
+Replace icons in:
+~~~
+api2app/build/api2app/android/gradle/app/src/main/res
+~~~
