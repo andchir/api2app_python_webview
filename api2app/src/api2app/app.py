@@ -1,12 +1,11 @@
 """
-Applications creator
+api2app - Applications creator
 """
 
 import toga
 from toga.style import Pack
 from toga.style.pack import COLUMN
 from toga.constants import CENTER
-from toga.fonts import Font
 import urllib.request
 import socket
 
