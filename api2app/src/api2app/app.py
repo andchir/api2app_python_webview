@@ -6,17 +6,16 @@ import toga
 from toga.style import Pack
 from toga.style.pack import COLUMN
 from toga.constants import CENTER
-import urllib.request
-import socket
+import requests
 
 SITE_URL = 'https://api2app.org'
 
 
 def check_internet_connection():
     try:
-        urllib.request.urlopen(SITE_URL, timeout=1)
-        return True
-    except (urllib.request.URLError, socket.timeout):
+        response = requests.get('http://connectivitycheck.gstatic.com/generate_204', timeout=5)
+        return response.status_code == 204
+    except requests.exceptions.RequestException:
         return False
 
 

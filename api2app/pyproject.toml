@@ -182,3 +182,8 @@ requires = [
 ]
 style_framework = "Shoelace v2.3"
 
+[tool.briefcase.android.gradle]
+permissions = [
+    "android.permission.ACCESS_NETWORK_STATE",
+    "android.permission.INTERNET"
+]
