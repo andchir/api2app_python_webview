@@ -21,6 +21,7 @@ test_sources = [
 ]
 
 requires = [
+    "requests~=2.32.3"
 ]
 test_requires = [
     "pytest",
@@ -31,11 +32,13 @@ universal_build = true
 requires = [
     "toga-cocoa~=0.4.7",
     "std-nslog~=1.0.3",
+    "requests~=2.32.3"
 ]
 
 [tool.briefcase.app.api2app.linux]
 requires = [
     "toga-gtk~=0.4.7",
+    "requests~=2.32.3"
 ]
 
 [tool.briefcase.app.api2app.linux.system.debian]
@@ -151,6 +154,7 @@ flatpak_sdk = "org.gnome.Sdk"
 [tool.briefcase.app.api2app.windows]
 requires = [
     "toga-winforms~=0.4.7",
+    "requests~=2.32.3"
 ]
 
 # Mobile deployments
@@ -158,11 +162,13 @@ requires = [
 requires = [
     "toga-iOS~=0.4.7",
     "std-nslog~=1.0.3",
+    "requests~=2.32.3"
 ]
 
 [tool.briefcase.app.api2app.android]
 requires = [
     "toga-android~=0.4.7",
+    "requests~=2.32.3"
 ]
 
 base_theme = "Theme.MaterialComponents.Light.DarkActionBar"
@@ -179,6 +185,7 @@ build_gradle_dependencies = [
 [tool.briefcase.app.api2app.web]
 requires = [
     "toga-web~=0.4.7",
+    "requests~=2.32.3"
 ]
 style_framework = "Shoelace v2.3"
 
