@@ -17,18 +17,6 @@ Run in dev mode:
 briefcase dev
 ~~~
 
-Build for Android:
-~~~
-briefcase create android
-briefcase build android
-briefcase package android
-~~~
-
-Run the app on a virtual device:
-~~~
-briefcase run android
-~~~
-
 Create icons:
 ~~~
 https://makeappicon.com/
@@ -37,4 +25,21 @@ https://makeappicon.com/
 Replace icons in:
 ~~~
 api2app/build/api2app/android/gradle/app/src/main/res
+~~~
+
+Build for Android:
+~~~
+briefcase run android
+briefcase create android
+briefcase build android
+briefcase package android
+~~~
+
+Build for Windows:
+~~~
+briefcase run windows
+briefcase create windows
+briefcase package windows
+briefcase package windows -p msi
+briefcase package windows -p zip
 ~~~
