@@ -2,7 +2,7 @@
 [tool.briefcase]
 project_name = "api2app"
 bundle = "com.api2app"
-version = "0.0.1"
+version = "0.0.2"
 url = "https://api2app.org/ru/"
 license.file = "LICENSE"
 author = "Andchir"
