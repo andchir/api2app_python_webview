@@ -43,3 +43,17 @@ briefcase package windows
 briefcase package windows -p msi
 briefcase package windows -p zip
 ~~~
+
+Build API:
+~~~
+. venv/bin/activate
+pip install -r requirements.txt
+uvicorn build_api.main:app --host 0.0.0.0 --port 8000
+~~~
+
+Swagger:
+~~~
+http://localhost:8000/docs
+~~~
+
+Deployment notes for Ubuntu production are in `DEPLOY.md`.
