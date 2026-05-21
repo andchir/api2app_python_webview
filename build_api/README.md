@@ -1,13 +1,19 @@
 # api2app Build API
 
-FastAPI service that accepts HTML/CSS/JS and builds packages through the same
-Briefcase project that already exists in this repository.
+FastAPI service that accepts HTML/CSS/JS as form fields and builds packages
+through the same Briefcase project that already exists in this repository.
 
-The `html`, `css`, and `js` fields can be sent as plain source code or wrapped
-in markdown fences such as ```` ```html ... ``` ```` and `~~~css ... ~~~`.
-Outer fence lines are removed before the app is generated. The `html` field
-must be a complete document: `<!doctype html>`, `<html>`, `<head>`, `<body>`,
-and matching closing tags are required.
+Build requests must be sent as `multipart/form-data` when uploading images, or
+as `application/x-www-form-urlencoded` when there are no files. The `html`,
+`css`, and `js` fields can be sent as plain source code or wrapped in markdown
+fences such as ```` ```html ... ``` ```` and `~~~css ... ~~~`. Outer fence lines
+are removed before the app is generated. The `html` field must be a complete
+document: `<!doctype html>`, `<html>`, `<head>`, `<body>`, and matching closing
+tags are required.
+
+Header fields use names such as `header_title` and `header_background_color`.
+Menu items can be sent as a JSON array in the `menu_items` form field or as
+repeated `menu_label`, `menu_href`, and `menu_onclick` fields.
 
 ## Run
 
@@ -40,29 +46,23 @@ build finishes, regardless of success or failure.
 
 ```bash
 curl -X POST http://localhost:8000/build/android \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "app_name": "Demo App",
-    "header": {
-      "title": "Demo App",
-      "subtitle": "Generated header",
-      "background_color": "#111827",
-      "text_color": "#ffffff"
-    },
-    "menu": {
-      "position": "top",
-      "items": [
-        { "label": "Home", "href": "#home" },
-        { "label": "Settings", "href": "#settings" }
-      ]
-    },
-    "html": "<!doctype html><html><head><meta charset=\"utf-8\"></head><body><main><h1>Hello</h1><button onclick=\"hello()\">Run</button></main></body></html>",
-    "css": "body { font-family: sans-serif; padding: 24px; }",
-    "js": "function hello() { alert(\"Hello from api2app\"); }"
-  }'
+  -F 'app_name=Demo App' \
+  -F 'header_title=Demo App' \
+  -F 'header_subtitle=Generated header' \
+  -F 'header_background_color=#111827' \
+  -F 'header_text_color=#ffffff' \
+  -F 'menu_position=top' \
+  -F 'menu_items=[{"label":"Home","href":"#home"},{"label":"Settings","href":"#settings"}]' \
+  -F 'html=<!doctype html><html><head><meta charset="utf-8"></head><body><main><h1>Hello</h1><button onclick="hello()">Run</button></main></body></html>' \
+  -F 'css=body { font-family: sans-serif; padding: 24px; }' \
+  -F 'js=function hello() { alert("Hello from api2app"); }' \
+  -F 'icon_file=@/path/to/icon.png'
 ```
 
-For app icons, pass `icon.png_base64` as a square PNG encoded in base64 or as a
-`data:image/png;base64,...` value. The API generates Android launcher PNG files
-and a Windows `icon.ico` from it. You can override the Windows icon with
-`icon.ico_base64`.
+For app icons, pass either `icon_file=@/path/to/image.png` or
+`icon_url=https://example.com/icon.png`. The source image can be PNG, JPG, WEBP,
+BMP, GIF, or ICO; it is converted and resized automatically for Android launcher
+icons, the Play Store icon, and the Windows ICO file. To override only the
+Windows icon, use `ico_file` or `ico_url`. Downloaded/uploaded source images are
+stored under `build_api/runtime/uploads` only while the queued build needs them
+and are deleted after the build finishes or fails.

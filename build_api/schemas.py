@@ -36,13 +36,17 @@ class MenuOptions(BaseModel):
 
 
 class AppIconOptions(BaseModel):
-    png_base64: str | None = Field(
+    source_path: str | None = Field(
         None,
-        description="Base64 PNG or data:image/png;base64 value. Used to generate Android icons and Windows ICO.",
+        description="Internal path to uploaded or downloaded source image. Used to generate Android icons and Windows ICO.",
     )
-    ico_base64: str | None = Field(
+    ico_path: str | None = Field(
         None,
-        description="Optional Base64 ICO or data:image/x-icon;base64 value for Windows.",
+        description="Internal path to uploaded or downloaded Windows icon source image.",
+    )
+    asset_dir: str | None = Field(
+        None,
+        description="Internal temporary asset directory deleted after the build.",
     )
 
 

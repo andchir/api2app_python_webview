@@ -58,10 +58,12 @@ class Settings:
     queue_file: Path
     workspaces_dir: Path
     artifacts_dir: Path
+    uploads_dir: Path
     briefcase_command: tuple[str, ...]
     max_concurrent_builds: int
     build_timeout_seconds: int
     max_source_bytes: int
+    max_image_bytes: int
     artifact_ttl_seconds: int
     cleanup_interval_seconds: int
     keep_workspaces: bool
@@ -92,10 +94,12 @@ class Settings:
             queue_file=storage_dir / "queue.json",
             workspaces_dir=storage_dir / "workspaces",
             artifacts_dir=storage_dir / "artifacts",
+            uploads_dir=storage_dir / "uploads",
             briefcase_command=tuple(command),
             max_concurrent_builds=_as_int(env.get("BUILD_MAX_CONCURRENT"), default=1, minimum=1),
             build_timeout_seconds=_as_int(env.get("BUILD_TIMEOUT_SECONDS"), default=7200, minimum=60),
             max_source_bytes=_as_int(env.get("MAX_SOURCE_BYTES"), default=5_000_000, minimum=1024),
+            max_image_bytes=_as_int(env.get("MAX_IMAGE_BYTES"), default=10_000_000, minimum=1024),
             artifact_ttl_seconds=_as_int(env.get("ARTIFACT_TTL_SECONDS"), default=3600, minimum=60),
             cleanup_interval_seconds=_as_int(env.get("CLEANUP_INTERVAL_SECONDS"), default=300, minimum=10),
             keep_workspaces=_as_bool(env.get("BUILD_KEEP_WORKSPACES"), default=False),
@@ -105,3 +109,4 @@ class Settings:
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.workspaces_dir.mkdir(parents=True, exist_ok=True)
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self.uploads_dir.mkdir(parents=True, exist_ok=True)

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
-import binascii
 import html as html_lib
 import json
 import re
@@ -95,6 +93,7 @@ async def run_build(job: dict[str, Any], settings: Settings) -> dict[str, Any]:
             "message": str(exc),
         }
     finally:
+        _cleanup_request_assets(job, settings)
         if not settings.keep_workspaces and workspace.exists():
             shutil.rmtree(workspace)
 
@@ -451,38 +450,34 @@ def _render_menu_item(item: dict[str, Any]) -> str:
 
 def _write_icons(workspace: Path, request: dict[str, Any]) -> None:
     icon = request.get("icon") or {}
-    png_base64 = icon.get("png_base64")
-    ico_base64 = icon.get("ico_base64")
-    if not png_base64 and not ico_base64:
+    source_path = _icon_path(icon.get("source_path"), "Icon image")
+    ico_path = _icon_path(icon.get("ico_path"), "Windows icon image")
+    if not source_path and not ico_path:
         return
 
     resources_dir = workspace / "src" / "api2app" / "resources"
     resources_dir.mkdir(parents=True, exist_ok=True)
 
-    if png_base64:
-        png_bytes = _decode_base64_asset(png_base64)
-        source_png = resources_dir / "icon-source.png"
-        source_png.write_bytes(png_bytes)
-        _generate_png_icons(source_png, resources_dir)
+    if source_path:
+        _generate_png_icons(source_path, resources_dir)
 
-        if not ico_base64:
-            _generate_ico(source_png, resources_dir / "icon.ico")
-
-    if ico_base64:
-        (resources_dir / "icon.ico").write_bytes(_decode_base64_asset(ico_base64))
+    if ico_path:
+        _generate_ico(ico_path, resources_dir / "icon.ico")
+    elif source_path:
+        _generate_ico(source_path, resources_dir / "icon.ico")
 
 
-def _decode_base64_asset(value: str) -> bytes:
-    if "," in value and value.strip().lower().startswith("data:"):
-        value = value.split(",", 1)[1]
-    value = "".join(value.split())
-    try:
-        return base64.b64decode(value, validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise ValueError("Icon must be a valid base64 value") from exc
+def _icon_path(value: str | None, label: str) -> Path | None:
+    if not value:
+        return None
+
+    path = Path(value)
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError(f"{label} not found: {path}")
+    return path
 
 
-def _generate_png_icons(source_png: Path, resources_dir: Path) -> None:
+def _generate_png_icons(source_image: Path, resources_dir: Path) -> None:
     try:
         from PIL import Image
     except ImportError as exc:
@@ -496,28 +491,59 @@ def _generate_png_icons(source_png: Path, resources_dir: Path) -> None:
         "mipmap-xxxhdpi": 192,
     }
 
-    with Image.open(source_png) as image:
-        image = image.convert("RGBA")
+    with Image.open(source_image) as image:
         for folder, size in sizes.items():
             target_dir = resources_dir / "android" / folder
             target_dir.mkdir(parents=True, exist_ok=True)
-            resized = image.resize((size, size), Image.LANCZOS)
+            resized = _resize_to_square(image, size)
             for filename in ("ic_launcher.png", "ic_launcher_round.png", "ic_launcher_foreground.png"):
                 resized.save(target_dir / filename, format="PNG")
 
-        playstore = image.resize((512, 512), Image.LANCZOS)
+        playstore = _resize_to_square(image, 512)
         (resources_dir / "android").mkdir(parents=True, exist_ok=True)
         playstore.save(resources_dir / "android" / "playstore-icon.png", format="PNG")
 
 
-def _generate_ico(source_png: Path, target_ico: Path) -> None:
+def _generate_ico(source_image: Path, target_ico: Path) -> None:
     try:
         from PIL import Image
     except ImportError as exc:
         raise RuntimeError("Pillow is required to generate Windows ICO. Install requirements.txt.") from exc
 
-    with Image.open(source_png) as image:
-        image.convert("RGBA").save(target_ico, format="ICO", sizes=[(16, 16), (32, 32), (48, 48), (256, 256)])
+    with Image.open(source_image) as image:
+        _resize_to_square(image, 256).save(
+            target_ico,
+            format="ICO",
+            sizes=[(16, 16), (32, 32), (48, 48), (256, 256)],
+        )
+
+
+def _resize_to_square(image: Any, size: int) -> Any:
+    from PIL import Image
+
+    resized = image.convert("RGBA")
+    resized.thumbnail((size, size), Image.LANCZOS)
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    left = (size - resized.width) // 2
+    top = (size - resized.height) // 2
+    canvas.alpha_composite(resized, (left, top))
+    return canvas
+
+
+def _cleanup_request_assets(job: dict[str, Any], settings: Settings) -> None:
+    icon = job.get("request", {}).get("icon") or {}
+    asset_dir_value = icon.get("asset_dir")
+    if not asset_dir_value:
+        return
+
+    try:
+        asset_dir = Path(asset_dir_value).resolve()
+        uploads_dir = settings.uploads_dir.resolve()
+        asset_dir.relative_to(uploads_dir)
+    except (OSError, ValueError):
+        return
+
+    shutil.rmtree(asset_dir, ignore_errors=True)
 
 
 def _build_commands(settings: Settings, target: str, package_format: str | None) -> list[list[str]]:

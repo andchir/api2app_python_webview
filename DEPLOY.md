@@ -1,8 +1,8 @@
 # Деплой API на Ubuntu
 
-Этот проект поднимает FastAPI-сервис, который принимает HTML/CSS/JS, кладет
-задачи в JSON-очередь и запускает сборку через существующий Briefcase-проект
-`api2app`.
+Этот проект поднимает FastAPI-сервис, который принимает HTML/CSS/JS и
+изображения через поля формы, кладет задачи в JSON-очередь и запускает сборку
+через существующий Briefcase-проект `api2app`.
 
 Важно: Android APK можно собирать на Ubuntu при наличии JDK и Android SDK.
 Windows `msi/exe` через Briefcase обычно собирается на Windows-хосте. На Ubuntu
@@ -74,6 +74,7 @@ BRIEFCASE_PROJECT_DIR=api2app
 BRIEFCASE_COMMAND=venv/bin/briefcase
 BUILD_TIMEOUT_SECONDS=7200
 MAX_SOURCE_BYTES=5000000
+MAX_IMAGE_BYTES=10000000
 ARTIFACT_TTL_SECONDS=3600
 CLEANUP_INTERVAL_SECONDS=300
 BUILD_KEEP_WORKSPACES=false
@@ -85,6 +86,10 @@ BUILD_KEEP_WORKSPACES=false
 
 `ARTIFACT_TTL_SECONDS=3600` означает, что готовый файл хранится один час. После
 истечения TTL API удаляет каталог результата и перестает отдавать download URL.
+
+`MAX_IMAGE_BYTES` ограничивает размер загружаемого файла и изображения,
+скачанного по `icon_url`/`ico_url`. Временные исходники иконок хранятся в
+`build_api/runtime/uploads` только до завершения сборки.
 
 ## 3. Проверка вручную
 
