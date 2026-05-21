@@ -11,7 +11,8 @@ from urllib.parse import urlparse
 import requests
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import FileResponse
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
 
@@ -37,9 +38,21 @@ TRUE_FORM_VALUES = {"1", "true", "yes", "on"}
 FALSE_FORM_VALUES = {"0", "false", "no", "off"}
 
 COMMON_FORM_PROPERTIES: dict[str, Any] = {
-    "html": {"type": "string"},
-    "css": {"type": "string", "default": ""},
-    "js": {"type": "string", "default": ""},
+    "html": {
+        "type": "string",
+        "format": "textarea",
+        "description": "Full HTML document.",
+    },
+    "css": {
+        "type": "string",
+        "format": "textarea",
+        "default": "",
+    },
+    "js": {
+        "type": "string",
+        "format": "textarea",
+        "default": "",
+    },
     "app_name": {"type": "string", "default": "api2app generated"},
     "bundle": {"type": "string", "default": "com.api2app.generated"},
     "version": {"type": "string", "default": "0.0.1"},
@@ -96,10 +109,98 @@ def _form_openapi_extra(*, include_windows_format: bool = False) -> dict[str, An
     }
 
 
+def _swagger_textarea_script() -> str:
+    return """
+<script>
+(function () {
+  const fields = new Set(["html", "css", "js"]);
+  let timer = null;
+
+  function fieldName(row) {
+    const nameCell = row.querySelector(".parameters-col_name") || row.querySelector("td:first-child");
+    if (!nameCell) {
+      return null;
+    }
+    const text = nameCell.textContent.trim();
+    for (const field of fields) {
+      if (new RegExp("^" + field + "\\\\b").test(text)) {
+        return field;
+      }
+    }
+    return null;
+  }
+
+  function setNativeValue(element, value) {
+    const valueSetter = Object.getOwnPropertyDescriptor(element, "value")?.set;
+    const prototype = Object.getPrototypeOf(element);
+    const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+
+    if (prototypeValueSetter && valueSetter !== prototypeValueSetter) {
+      prototypeValueSetter.call(element, value);
+    } else if (valueSetter) {
+      valueSetter.call(element, value);
+    } else {
+      element.value = value;
+    }
+  }
+
+  function syncInput(input, value) {
+    setNativeValue(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function enhance() {
+    document.querySelectorAll("tr").forEach((row) => {
+      const name = fieldName(row);
+      if (!name || row.querySelector("textarea[data-api2app-textarea-for='" + name + "']")) {
+        return;
+      }
+
+      const input = row.querySelector("input[type='text'], input:not([type])");
+      if (!input || input.dataset.api2appTextareaSource === "true") {
+        return;
+      }
+
+      const textarea = document.createElement("textarea");
+      textarea.dataset.api2appTextareaFor = name;
+      textarea.className = input.className;
+      textarea.placeholder = input.placeholder || name;
+      textarea.value = input.value || "";
+      textarea.setAttribute("aria-label", input.getAttribute("aria-label") || name);
+      textarea.style.boxSizing = "border-box";
+      textarea.style.fontFamily = "monospace";
+      textarea.style.minHeight = name === "html" ? "260px" : "160px";
+      textarea.style.resize = "vertical";
+      textarea.style.width = "100%";
+
+      input.dataset.api2appTextareaSource = "true";
+      input.style.display = "none";
+      input.insertAdjacentElement("afterend", textarea);
+
+      textarea.addEventListener("input", () => syncInput(input, textarea.value));
+      textarea.addEventListener("change", () => syncInput(input, textarea.value));
+      syncInput(input, textarea.value);
+    });
+  }
+
+  function scheduleEnhance() {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(enhance, 50);
+  }
+
+  window.addEventListener("load", scheduleEnhance);
+  new MutationObserver(scheduleEnhance).observe(document.body, { childList: true, subtree: true });
+})();
+</script>
+""".strip()
+
+
 app = FastAPI(
     title="api2app Build API",
     version="0.1.0",
     description="Build Android APK and Windows MSI/EXE packages from submitted HTML/CSS/JS code.",
+    docs_url=None,
 )
 
 
@@ -111,6 +212,17 @@ async def startup() -> None:
 @app.on_event("shutdown")
 async def shutdown() -> None:
     await build_queue.stop()
+
+
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html() -> HTMLResponse:
+    response = get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - Swagger UI",
+    )
+    html = response.body.decode("utf-8")
+    html = html.replace("</body>", f"{_swagger_textarea_script()}\n</body>")
+    return HTMLResponse(html)
 
 
 @app.get("/health")
