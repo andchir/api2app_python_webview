@@ -51,6 +51,8 @@ pip install -r requirements.txt
 uvicorn build_api.main:app --host 0.0.0.0 --port 8000
 ~~~
 
+Set `BUILD_API_KEY` in `.env` and pass it to API routes as `X-API-Key`.
+
 Swagger:
 ~~~
 http://localhost:8000/docs

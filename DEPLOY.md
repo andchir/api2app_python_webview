@@ -78,6 +78,7 @@ MAX_IMAGE_BYTES=10000000
 ARTIFACT_TTL_SECONDS=3600
 CLEANUP_INTERVAL_SECONDS=300
 BUILD_KEEP_WORKSPACES=false
+BUILD_API_KEY=replace-with-a-long-random-secret
 ```
 
 `BUILD_MAX_CONCURRENT` задает, сколько сборок можно выполнять одновременно.
@@ -90,6 +91,9 @@ BUILD_KEEP_WORKSPACES=false
 `MAX_IMAGE_BYTES` ограничивает размер загружаемого файла и изображения,
 скачанного по `icon_url`/`ico_url`. Временные исходники иконок хранятся в
 `build_api/runtime/uploads` только до завершения сборки.
+
+`BUILD_API_KEY` обязателен для основных API-роутов. Передавайте его в заголовке
+`X-API-Key`; `/health` и `/docs` оставлены без ключа для проверок и Swagger UI.
 
 ## 3. Проверка вручную
 
@@ -108,6 +112,12 @@ http://SERVER_IP:8000/docs
 
 ```bash
 curl http://127.0.0.1:8000/health
+```
+
+Проверка защищенного роута:
+
+```bash
+curl -H "X-API-Key: $BUILD_API_KEY" http://127.0.0.1:8000/jobs
 ```
 
 ## 4. Systemd

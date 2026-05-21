@@ -67,6 +67,7 @@ class Settings:
     artifact_ttl_seconds: int
     cleanup_interval_seconds: int
     keep_workspaces: bool
+    api_key: str | None
 
     @classmethod
     def load(cls) -> "Settings":
@@ -103,6 +104,7 @@ class Settings:
             artifact_ttl_seconds=_as_int(env.get("ARTIFACT_TTL_SECONDS"), default=3600, minimum=60),
             cleanup_interval_seconds=_as_int(env.get("CLEANUP_INTERVAL_SECONDS"), default=300, minimum=10),
             keep_workspaces=_as_bool(env.get("BUILD_KEEP_WORKSPACES"), default=False),
+            api_key=(env.get("BUILD_API_KEY") or "").strip() or None,
         )
 
     def ensure_directories(self) -> None:

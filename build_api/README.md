@@ -25,6 +25,12 @@ uvicorn build_api.main:app --host 0.0.0.0 --port 8000
 
 Swagger UI is available at `http://localhost:8000/docs`.
 
+Set `BUILD_API_KEY` in `.env` and pass it with protected requests:
+
+```bash
+curl -H "X-API-Key: $BUILD_API_KEY" http://localhost:8000/jobs
+```
+
 ## Routes
 
 - `POST /build/android` starts an Android build and returns a job id.
@@ -46,6 +52,7 @@ build finishes, regardless of success or failure.
 
 ```bash
 curl -X POST http://localhost:8000/build/android \
+  -H "X-API-Key: $BUILD_API_KEY" \
   -F 'app_name=Demo App' \
   -F 'header_title=Demo App' \
   -F 'header_subtitle=Generated header' \

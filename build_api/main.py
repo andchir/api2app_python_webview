@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 import mimetypes
 import shutil
@@ -9,10 +10,11 @@ from typing import Any
 from urllib.parse import urlparse
 
 import requests
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.encoders import jsonable_encoder
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.security import APIKeyHeader
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
 
@@ -36,6 +38,7 @@ IMAGE_CHUNK_SIZE = 1024 * 1024
 ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".ico"}
 TRUE_FORM_VALUES = {"1", "true", "yes", "on"}
 FALSE_FORM_VALUES = {"0", "false", "no", "off"}
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 COMMON_FORM_PROPERTIES: dict[str, Any] = {
     "html": {
@@ -235,11 +238,19 @@ async def health() -> dict:
     }
 
 
+async def require_api_key(api_key: str | None = Security(api_key_header)) -> None:
+    if not settings.api_key:
+        raise HTTPException(status_code=500, detail="BUILD_API_KEY is not configured")
+    if api_key is None or not hmac.compare_digest(api_key, settings.api_key):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
 @app.post(
     "/build/android",
     response_model=BuildAccepted,
     status_code=202,
     openapi_extra=_form_openapi_extra(),
+    dependencies=[Depends(require_api_key)],
 )
 async def build_android(request: Request) -> BuildAccepted:
     payload, assets_dir = await _payload_from_form(request, AndroidBuildRequest)
@@ -256,6 +267,7 @@ async def build_android(request: Request) -> BuildAccepted:
     response_model=BuildAccepted,
     status_code=202,
     openapi_extra=_form_openapi_extra(include_windows_format=True),
+    dependencies=[Depends(require_api_key)],
 )
 async def build_windows(request: Request) -> BuildAccepted:
     body, assets_dir = await _payload_from_form(request, WindowsBuildRequest)
@@ -268,13 +280,13 @@ async def build_windows(request: Request) -> BuildAccepted:
     return _accepted_response(job["job_id"], request)
 
 
-@app.get("/jobs", response_model=ActiveJobsResponse)
+@app.get("/jobs", response_model=ActiveJobsResponse, dependencies=[Depends(require_api_key)])
 async def list_jobs(request: Request) -> ActiveJobsResponse:
     jobs = [_status_response(status, request) for status in build_queue.list_active() if status]
     return ActiveJobsResponse(jobs=jobs)
 
 
-@app.get("/jobs/{job_id}", response_model=JobStatusResponse)
+@app.get("/jobs/{job_id}", response_model=JobStatusResponse, dependencies=[Depends(require_api_key)])
 async def get_job_status(job_id: str, request: Request) -> JobStatusResponse:
     status = build_queue.get_status(job_id)
     if not status:
@@ -282,7 +294,7 @@ async def get_job_status(job_id: str, request: Request) -> JobStatusResponse:
     return _status_response(status, request)
 
 
-@app.get("/jobs/{job_id}/download")
+@app.get("/jobs/{job_id}/download", dependencies=[Depends(require_api_key)])
 async def download_artifact(job_id: str) -> FileResponse:
     result = load_result(job_id, settings)
     if not result:
@@ -304,7 +316,7 @@ async def download_artifact(job_id: str) -> FileResponse:
     )
 
 
-@app.get("/jobs/{job_id}/log")
+@app.get("/jobs/{job_id}/log", dependencies=[Depends(require_api_key)])
 async def download_log(job_id: str) -> FileResponse:
     result = load_result(job_id, settings)
     if result and is_result_expired(result):
