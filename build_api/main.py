@@ -80,8 +80,18 @@ COMMON_FORM_PROPERTIES: dict[str, Any] = {
 }
 
 
-def _form_openapi_extra(*, include_windows_format: bool = False) -> dict[str, Any]:
+def _form_openapi_extra(
+    *,
+    include_android_format: bool = False,
+    include_windows_format: bool = False,
+) -> dict[str, Any]:
     properties = dict(COMMON_FORM_PROPERTIES)
+    if include_android_format:
+        properties["package_format"] = {
+            "type": "string",
+            "enum": ["apk", "aab"],
+            "default": "apk",
+        }
     if include_windows_format:
         properties["package_format"] = {
             "type": "string",
@@ -202,7 +212,7 @@ def _swagger_textarea_script() -> str:
 app = FastAPI(
     title="api2app Build API",
     version="0.1.0",
-    description="Build Android APK and Windows MSI/EXE packages from submitted HTML/CSS/JS code.",
+    description="Build Android APK/AAB and Windows MSI/EXE packages from submitted HTML/CSS/JS code.",
     docs_url=None,
 )
 
@@ -249,13 +259,14 @@ async def require_api_key(api_key: str | None = Security(api_key_header)) -> Non
     "/build/android",
     response_model=BuildAccepted,
     status_code=202,
-    openapi_extra=_form_openapi_extra(),
+    openapi_extra=_form_openapi_extra(include_android_format=True),
     dependencies=[Depends(require_api_key)],
 )
 async def build_android(request: Request) -> BuildAccepted:
-    payload, assets_dir = await _payload_from_form(request, AndroidBuildRequest)
+    body, assets_dir = await _payload_from_form(request, AndroidBuildRequest)
+    package_format = body.pop("package_format")
     try:
-        job = await _enqueue_or_413("android", payload, None)
+        job = await _enqueue_or_413("android", body, package_format)
     except Exception:
         _cleanup_asset_dir(assets_dir)
         raise
@@ -348,7 +359,9 @@ async def _payload_from_form(
         if icon:
             payload["icon"] = icon
 
-        if model_class is WindowsBuildRequest:
+        if model_class is AndroidBuildRequest:
+            payload["package_format"] = _optional_text(form, "package_format") or "apk"
+        elif model_class is WindowsBuildRequest:
             payload["package_format"] = _optional_text(form, "package_format") or "msi"
 
         return _validated_payload(model_class, payload), assets_dir

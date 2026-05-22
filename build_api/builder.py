@@ -554,7 +554,7 @@ def _build_commands(settings: Settings, target: str, package_format: str | None)
     ]
 
     if target == "android":
-        commands.append([*briefcase, "package", target])
+        commands.append([*briefcase, "package", target, "-p", package_format or "apk"])
     elif target == "windows" and package_format != "exe":
         package_args = [*briefcase, "package", target]
         if package_format:
@@ -589,7 +589,7 @@ async def _run_command(command: list[str], cwd: Path, log, timeout_seconds: int)
 
 def _find_artifact(workspace: Path, target: str, package_format: str | None) -> Path:
     if target == "android":
-        suffixes = [".apk", ".aab"]
+        suffixes = [f".{package_format or 'apk'}"]
     elif package_format == "exe":
         suffixes = [".exe"]
     elif package_format:

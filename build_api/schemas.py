@@ -9,6 +9,7 @@ from .builder import validate_html_document
 
 BuildTarget = Literal["android", "windows"]
 JobStatus = Literal["queued", "running", "completed", "failed"]
+AndroidPackageFormat = Literal["apk", "aab"]
 WindowsPackageFormat = Literal["msi", "zip", "exe"]
 MenuPosition = Literal["top", "bottom"]
 
@@ -74,7 +75,10 @@ class SourceBuildRequest(BaseModel):
 
 
 class AndroidBuildRequest(SourceBuildRequest):
-    pass
+    package_format: AndroidPackageFormat = Field(
+        "apk",
+        description="Use apk or aab for Briefcase Android packaging.",
+    )
 
 
 class WindowsBuildRequest(SourceBuildRequest):

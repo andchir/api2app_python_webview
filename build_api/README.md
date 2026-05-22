@@ -33,10 +33,11 @@ curl -H "X-API-Key: $BUILD_API_KEY" http://localhost:8000/jobs
 
 ## Routes
 
-- `POST /build/android` starts an Android build and returns a job id.
+- `POST /build/android` starts an Android build and returns a job id. Use
+  `package_format=apk` or `package_format=aab`; the default is `apk`.
 - `POST /build/windows` starts a Windows build and returns a job id.
 - `GET /jobs/{job_id}` returns queue/build status.
-- `GET /jobs/{job_id}/download` returns the APK/MSI/EXE after completion.
+- `GET /jobs/{job_id}/download` returns the APK/AAB/MSI/EXE after completion.
 - `GET /jobs/{job_id}/log` returns the Briefcase build log.
 
 Queue state is stored in `build_api/runtime/queue.json`. Finished jobs are
@@ -53,6 +54,7 @@ build finishes, regardless of success or failure.
 ```bash
 curl -X POST http://localhost:8000/build/android \
   -H "X-API-Key: $BUILD_API_KEY" \
+  -F 'package_format=apk' \
   -F 'app_name=Demo App' \
   -F 'header_title=Demo App' \
   -F 'header_subtitle=Generated header' \
