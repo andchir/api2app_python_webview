@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import html as html_lib
 import json
 import re
 import shutil
@@ -13,6 +12,7 @@ from .config import Settings
 
 
 APP_TEMPLATE = '''from importlib import resources
+import json
 
 import toga
 from toga.style import Pack
@@ -27,6 +27,17 @@ def _load_generated_html():
     )
 
 
+def _load_generated_config():
+    try:
+        return json.loads(
+            resources.files(__package__)
+            .joinpath("resources", "generated", "app_config.json")
+            .read_text(encoding="utf-8")
+        )
+    except Exception:
+        return {}
+
+
 def _set_webview_content(webview, html):
     native = getattr(getattr(webview, "_impl", None), "native", None)
     load_with_base_url = getattr(native, "loadDataWithBaseURL", None)
@@ -36,9 +47,15 @@ def _set_webview_content(webview, html):
         webview.set_content("https://api2app.local/", html)
 
 
+def _command_id(index):
+    return f"api2app-menu-{index}"
+
+
 class GeneratedWebApp(toga.App):
     def startup(self):
-        self.main_window = toga.MainWindow(title=self.formal_name, size=(1024, 768))
+        config = _load_generated_config()
+        title = self._native_title(config)
+        self.main_window = toga.MainWindow(title=title, size=(1024, 768))
 
         try:
             html = _load_generated_html()
@@ -56,10 +73,51 @@ class GeneratedWebApp(toga.App):
             return
 
         webview = toga.WebView(style=Pack(flex=1))
+        self.webview = webview
         _set_webview_content(webview, html)
+        self._install_native_menu(config.get("menu") or {})
         box = toga.Box(children=[webview], style=Pack(direction=COLUMN, flex=1))
         self.main_window.content = box
         self.main_window.show()
+
+    def _native_title(self, config):
+        header = config.get("header") or {}
+        if header.get("enabled", True) and header.get("title"):
+            return header["title"]
+        return config.get("app_name") or self.formal_name
+
+    def _install_native_menu(self, menu):
+        if not menu.get("enabled", True):
+            return
+
+        target = self.main_window.toolbar if menu.get("position", "top") == "top" else self.commands
+        for index, item in enumerate(menu.get("items") or []):
+            label = str(item.get("label") or "").strip()
+            if not label:
+                continue
+            target.add(
+                toga.Command(
+                    self._menu_action(item),
+                    text=label,
+                    order=index,
+                    id=_command_id(index),
+                )
+            )
+
+    def _menu_action(self, item):
+        def action(command):
+            onclick = item.get("onclick")
+            href = item.get("href") or "#"
+            if onclick:
+                self.webview.evaluate_javascript(str(onclick))
+            elif str(href).startswith(("http://", "https://")):
+                self.webview.url = str(href)
+            else:
+                self.webview.evaluate_javascript(
+                    "window.location.href = " + json.dumps(str(href)) + ";"
+                )
+
+        return action
 
 
 def main():
@@ -259,17 +317,6 @@ def compose_html(request: dict[str, Any]) -> str:
     if "<html" not in document.lower():
         document = f'<!doctype html>\n<html>\n<head><meta charset="utf-8"></head>\n<body>\n{document}\n</body>\n</html>'
 
-    shell = _build_app_shell(request)
-    bottom_shell = _build_bottom_menu(request)
-    generated_css = _build_app_shell_css(request)
-    if generated_css:
-        document = _insert_before(document, "</head>", f"\n<style>\n{generated_css}\n</style>\n", fallback_before="</body>")
-
-    if shell:
-        document = _insert_after_body_open(document, shell)
-    if bottom_shell:
-        document = _insert_before(document, "</body>", bottom_shell)
-
     if css:
         css_tag = f"\n<style>\n{css}\n</style>\n"
         document = _insert_before(document, "</head>", css_tag, fallback_before="</body>")
@@ -329,9 +376,21 @@ def _write_generated_app(workspace: Path, job: dict[str, Any]) -> None:
         compose_html(request),
         encoding="utf-8",
     )
+    (generated_dir / "app_config.json").write_text(
+        json.dumps(_native_app_config(request), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     (package_dir / "app.py").write_text(APP_TEMPLATE, encoding="utf-8")
     _write_icons(workspace, request)
     _patch_pyproject(workspace / "pyproject.toml", request)
+
+
+def _native_app_config(request: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "app_name": request.get("app_name", "api2app generated"),
+        "header": request.get("header") or {},
+        "menu": request.get("menu") or {},
+    }
 
 
 def _patch_pyproject(pyproject_path: Path, request: dict[str, Any]) -> None:
@@ -358,124 +417,6 @@ def _patch_pyproject(pyproject_path: Path, request: dict[str, Any]) -> None:
 
 def _escape_toml_string(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
-
-
-def _build_app_shell(request: dict[str, Any]) -> str:
-    header = request.get("header")
-    menu = request.get("menu")
-    parts: list[str] = []
-
-    if header and header.get("enabled", True):
-        title = html_lib.escape(header.get("title") or request.get("app_name") or "")
-        subtitle = html_lib.escape(header.get("subtitle") or "")
-        subtitle_html = f'<p class="api2app-header-subtitle">{subtitle}</p>' if subtitle else ""
-        parts.append(
-            '<header class="api2app-header">'
-            f'<h1 class="api2app-header-title">{title}</h1>'
-            f"{subtitle_html}"
-            "</header>"
-        )
-
-    if menu and menu.get("enabled", True) and menu.get("items"):
-        items = "".join(_render_menu_item(item) for item in menu["items"])
-        menu_html = f'<nav class="api2app-menu" aria-label="Application menu">{items}</nav>'
-        if menu.get("position", "top") == "top":
-            parts.append(menu_html)
-
-    return "".join(parts)
-
-
-def _build_bottom_menu(request: dict[str, Any]) -> str:
-    menu = request.get("menu")
-    if not menu or not menu.get("enabled", True) or not menu.get("items") or menu.get("position") != "bottom":
-        return ""
-    items = "".join(_render_menu_item(item) for item in menu["items"])
-    return f'<nav class="api2app-menu api2app-menu-bottom" aria-label="Application menu">{items}</nav>'
-
-
-def _build_app_shell_css(request: dict[str, Any]) -> str:
-    header = request.get("header") or {}
-    menu = request.get("menu") or {}
-    if not header and not menu:
-        return ""
-
-    header_background = header.get("background_color", "#111827")
-    header_text = header.get("text_color", "#ffffff")
-    menu_background = menu.get("background_color", "#f8fafc")
-    menu_text = menu.get("text_color", "#111827")
-    menu_position = menu.get("position", "top")
-    bottom_menu = menu and menu.get("enabled", True) and menu.get("items") and menu_position == "bottom"
-    bottom_padding = "72px" if bottom_menu else "0"
-
-    return f"""
-html, body {{
-    min-height: 100%;
-}}
-
-body {{
-    margin: 0;
-    padding-bottom: {bottom_padding};
-}}
-
-.api2app-header {{
-    background: {header_background};
-    color: {header_text};
-    padding: 18px 20px;
-}}
-
-.api2app-header-title {{
-    font-size: 22px;
-    line-height: 1.2;
-    margin: 0;
-}}
-
-.api2app-header-subtitle {{
-    font-size: 14px;
-    line-height: 1.4;
-    margin: 6px 0 0;
-    opacity: 0.85;
-}}
-
-.api2app-menu {{
-    align-items: center;
-    background: {menu_background};
-    border-bottom: 1px solid rgba(15, 23, 42, 0.12);
-    color: {menu_text};
-    display: flex;
-    gap: 6px;
-    overflow-x: auto;
-    padding: 8px 12px;
-}}
-
-.api2app-menu a {{
-    color: inherit;
-    display: inline-flex;
-    font-size: 14px;
-    line-height: 1;
-    padding: 10px 12px;
-    text-decoration: none;
-    white-space: nowrap;
-}}
-
-.api2app-menu-bottom {{
-    border-bottom: 0;
-    border-top: 1px solid rgba(15, 23, 42, 0.12);
-    bottom: 0;
-    box-sizing: border-box;
-    left: 0;
-    position: fixed;
-    right: 0;
-    z-index: 1000;
-}}
-""".strip()
-
-
-def _render_menu_item(item: dict[str, Any]) -> str:
-    label = html_lib.escape(str(item.get("label", "")))
-    href = html_lib.escape(str(item.get("href") or "#"), quote=True)
-    onclick = item.get("onclick")
-    onclick_attr = f' onclick="{html_lib.escape(str(onclick), quote=True)}"' if onclick else ""
-    return f'<a href="{href}"{onclick_attr}>{label}</a>'
 
 
 def _write_icons(workspace: Path, request: dict[str, Any]) -> None:
@@ -665,13 +606,6 @@ def _insert_before(document: str, marker: str, content: str, fallback_before: st
     if index == -1:
         return f"{document}\n{content}"
     return f"{document[:index]}{content}{document[index:]}"
-
-
-def _insert_after_body_open(document: str, content: str) -> str:
-    match = re.search(r"<body\b[^>]*>", document, flags=re.IGNORECASE)
-    if not match:
-        return f"{content}\n{document}"
-    return f"{document[:match.end()]}\n{content}\n{document[match.end():]}"
 
 
 def _tag_start(document: str, tag: str) -> int:

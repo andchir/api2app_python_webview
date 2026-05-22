@@ -15,9 +15,9 @@ MenuPosition = Literal["top", "bottom"]
 
 
 class HeaderOptions(BaseModel):
-    enabled: bool = Field(True, description="Render a generated header above the submitted HTML.")
-    title: str | None = Field(None, max_length=120, description="Header title. Defaults to app_name.")
-    subtitle: str | None = Field(None, max_length=240, description="Optional header subtitle.")
+    enabled: bool = Field(True, description="Use native app header settings.")
+    title: str | None = Field(None, max_length=120, description="Native header title. Defaults to app_name.")
+    subtitle: str | None = Field(None, max_length=240, description="Optional subtitle for clients that support it.")
     background_color: str = Field("#111827", max_length=40)
     text_color: str = Field("#ffffff", max_length=40)
 
@@ -29,7 +29,7 @@ class MenuItem(BaseModel):
 
 
 class MenuOptions(BaseModel):
-    enabled: bool = Field(True, description="Render a generated menu with the submitted items.")
+    enabled: bool = Field(True, description="Create native menu commands with the submitted items.")
     position: MenuPosition = Field("top", description="Menu position relative to the submitted HTML.")
     items: list[MenuItem] = Field(default_factory=list)
     background_color: str = Field("#f8fafc", max_length=40)
@@ -63,8 +63,8 @@ class SourceBuildRequest(BaseModel):
     bundle: str = Field("com.api2app.generated", min_length=3, max_length=120)
     version: str = Field("0.0.1", min_length=1, max_length=30)
     description: str = Field("Generated WebView application", max_length=300)
-    header: HeaderOptions | None = Field(None, description="Generated in-app header settings.")
-    menu: MenuOptions | None = Field(None, description="Generated in-app menu settings.")
+    header: HeaderOptions | None = Field(None, description="Native app header settings.")
+    menu: MenuOptions | None = Field(None, description="Native app menu settings.")
     icon: AppIconOptions | None = Field(None, description="Application icon settings.")
 
     @field_validator("html")

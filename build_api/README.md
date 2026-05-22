@@ -11,9 +11,10 @@ are removed before the app is generated. The `html` field must be a complete
 document: `<!doctype html>`, `<html>`, `<head>`, `<body>`, and matching closing
 tags are required.
 
-Header fields use names such as `header_title` and `header_background_color`.
-Menu items can be sent as a JSON array in the `menu_items` form field or as
-repeated `menu_label`, `menu_href`, and `menu_onclick` fields.
+Header fields use names such as `header_title`. Header and menu settings are
+rendered through native Toga/Android controls, not injected into the submitted
+HTML. Menu items can be sent as a JSON array in the `menu_items` form field or
+as repeated `menu_label`, `menu_href`, and `menu_onclick` fields.
 
 ## Run
 
