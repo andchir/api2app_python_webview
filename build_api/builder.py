@@ -12,21 +12,51 @@ from typing import Any
 from .config import Settings
 
 
-APP_TEMPLATE = '''from pathlib import Path
+APP_TEMPLATE = '''from importlib import resources
 
 import toga
 from toga.style import Pack
 from toga.style.pack import COLUMN
 
 
+def _load_generated_html():
+    return (
+        resources.files(__package__)
+        .joinpath("resources", "generated", "index.html")
+        .read_text(encoding="utf-8")
+    )
+
+
+def _set_webview_content(webview, html):
+    native = getattr(getattr(webview, "_impl", None), "native", None)
+    load_with_base_url = getattr(native, "loadDataWithBaseURL", None)
+    if load_with_base_url:
+        load_with_base_url("https://api2app.local/", html, "text/html", "UTF-8", None)
+    else:
+        webview.set_content("https://api2app.local/", html)
+
+
 class GeneratedWebApp(toga.App):
     def startup(self):
         self.main_window = toga.MainWindow(title=self.formal_name, size=(1024, 768))
 
-        webview = toga.WebView(style=Pack(flex=1))
-        index_path = Path(__file__).parent / "resources" / "generated" / "index.html"
-        webview.set_content("https://api2app.local/", index_path.read_text(encoding="utf-8"))
+        try:
+            html = _load_generated_html()
+        except Exception as exc:
+            self.main_window.content = toga.Box(
+                children=[
+                    toga.Label(
+                        f"Could not load generated HTML: {exc}",
+                        style=Pack(padding=16),
+                    )
+                ],
+                style=Pack(direction=COLUMN, flex=1),
+            )
+            self.main_window.show()
+            return
 
+        webview = toga.WebView(style=Pack(flex=1))
+        _set_webview_content(webview, html)
         box = toga.Box(children=[webview], style=Pack(direction=COLUMN, flex=1))
         self.main_window.content = box
         self.main_window.show()
