@@ -89,8 +89,8 @@ def _form_openapi_extra(
     if include_android_format:
         properties["package_format"] = {
             "type": "string",
-            "enum": ["apk", "aab"],
-            "default": "apk",
+            "enum": ["debug-apk", "apk", "aab"],
+            "default": "debug-apk",
         }
     if include_windows_format:
         properties["package_format"] = {
@@ -360,7 +360,7 @@ async def _payload_from_form(
             payload["icon"] = icon
 
         if model_class is AndroidBuildRequest:
-            payload["package_format"] = _optional_text(form, "package_format") or "apk"
+            payload["package_format"] = _optional_text(form, "package_format") or "debug-apk"
         elif model_class is WindowsBuildRequest:
             payload["package_format"] = _optional_text(form, "package_format") or "msi"
 

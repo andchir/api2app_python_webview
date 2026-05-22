@@ -32,7 +32,8 @@ Build for Android:
 briefcase run android
 briefcase create android
 briefcase build android
-briefcase package android
+briefcase package android -p debug-apk
+briefcase package android -p apk
 ~~~
 
 Build for Windows:

@@ -554,7 +554,7 @@ def _build_commands(settings: Settings, target: str, package_format: str | None)
     ]
 
     if target == "android":
-        commands.append([*briefcase, "package", target, "-p", package_format or "apk"])
+        commands.append([*briefcase, "package", target, "-p", package_format or "debug-apk"])
     elif target == "windows" and package_format != "exe":
         package_args = [*briefcase, "package", target]
         if package_format:
@@ -589,7 +589,8 @@ async def _run_command(command: list[str], cwd: Path, log, timeout_seconds: int)
 
 def _find_artifact(workspace: Path, target: str, package_format: str | None) -> Path:
     if target == "android":
-        suffixes = [f".{package_format or 'apk'}"]
+        package_format = package_format or "debug-apk"
+        suffixes = [".aab"] if package_format == "aab" else [".apk"]
     elif package_format == "exe":
         suffixes = [".exe"]
     elif package_format:
@@ -605,7 +606,25 @@ def _find_artifact(workspace: Path, target: str, package_format: str | None) -> 
     if not candidates:
         raise FileNotFoundError(f"No {target} artifact found with suffixes: {', '.join(suffixes)}")
 
+    if target == "android":
+        candidates = _prefer_android_artifact(candidates, package_format or "debug-apk")
+
     return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def _prefer_android_artifact(candidates: list[Path], package_format: str) -> list[Path]:
+    if package_format == "debug-apk":
+        preferred = [path for path in candidates if _is_debug_apk(path)]
+    elif package_format == "apk":
+        preferred = [path for path in candidates if not _is_debug_apk(path)]
+    else:
+        preferred = []
+
+    return preferred or candidates
+
+
+def _is_debug_apk(path: Path) -> bool:
+    return path.suffix.lower() == ".apk" and any("debug" in part.lower() for part in path.parts)
 
 
 def _insert_before(document: str, marker: str, content: str, fallback_before: str | None = None) -> str:

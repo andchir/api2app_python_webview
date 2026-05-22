@@ -4,7 +4,10 @@
 изображения через поля формы, кладет задачи в JSON-очередь и запускает сборку
 через существующий Briefcase-проект `api2app`.
 
-Важно: Android APK можно собирать на Ubuntu при наличии JDK и Android SDK.
+Важно: Android debug APK можно собирать на Ubuntu при наличии JDK и Android SDK.
+Для установки на телефон напрямую API по умолчанию собирает `debug-apk`;
+release `apk`/`aab` используйте только для отдельного процесса подписи и
+публикации.
 Windows `msi/exe` через Briefcase обычно собирается на Windows-хосте. На Ubuntu
 роут `/build/windows` можно оставить включенным, но сборка будет падать, если
 Briefcase не поддерживает packaging Windows на этом сервере. Для Windows
