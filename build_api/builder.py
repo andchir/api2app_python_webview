@@ -134,6 +134,15 @@ def main():
     return GeneratedWebApp()
 '''
 
+BRIEFCASE_ICON = "resources/generated/icon"
+ANDROID_ICON_SIZES = {
+    "mipmap-mdpi": {"launcher": 48, "adaptive": 108, "splash": 320},
+    "mipmap-hdpi": {"launcher": 72, "adaptive": 162, "splash": 480},
+    "mipmap-xhdpi": {"launcher": 96, "adaptive": 216, "splash": 640},
+    "mipmap-xxhdpi": {"launcher": 144, "adaptive": 324, "splash": 960},
+    "mipmap-xxxhdpi": {"launcher": 192, "adaptive": 432, "splash": 1280},
+}
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -159,6 +168,8 @@ async def run_build(job: dict[str, Any], settings: Settings) -> dict[str, Any]:
             log.write(f"job_id={job_id}\ntarget={target}\nstarted_at={utc_now()}\n\n")
             for command in _build_commands(settings, target, package_format):
                 await _run_command(command, workspace, log, settings.build_timeout_seconds)
+                if _is_create_command(command, target):
+                    _install_created_app_resources(workspace, job["request"], target, log)
 
         artifact = _find_artifact(workspace, target, package_format)
         copied_artifact = artifact_dir / artifact.name
@@ -422,11 +433,45 @@ def _patch_pyproject(pyproject_path: Path, request: dict[str, Any]) -> None:
             flags=re.MULTILINE,
         )
 
+    if _has_custom_icon(request):
+        text = _set_toml_section_value(
+            text,
+            "tool.briefcase.app.api2app",
+            "icon",
+            BRIEFCASE_ICON,
+        )
+
     pyproject_path.write_text(text, encoding="utf-8")
 
 
 def _escape_toml_string(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _set_toml_section_value(text: str, section: str, key: str, value: str) -> str:
+    section_match = re.search(
+        rf'(?ms)^(\[{re.escape(section)}\]\s*\n)(.*?)(?=^\[|\Z)',
+        text,
+    )
+    if not section_match:
+        return text
+
+    header, body = section_match.groups()
+    line = f'{key} = "{_escape_toml_string(value)}"'
+    key_pattern = rf'(?m)^({re.escape(key)}\s*=\s*).*$'
+    if re.search(key_pattern, body):
+        body = re.sub(key_pattern, line, body, count=1)
+    else:
+        if body and not body.endswith("\n"):
+            body += "\n"
+        body += f"{line}\n"
+
+    return text[: section_match.start()] + header + body + text[section_match.end():]
+
+
+def _has_custom_icon(request: dict[str, Any]) -> bool:
+    icon = request.get("icon") or {}
+    return bool(icon.get("source_path") or icon.get("ico_path"))
 
 
 def _write_icons(workspace: Path, request: dict[str, Any]) -> None:
@@ -438,14 +483,18 @@ def _write_icons(workspace: Path, request: dict[str, Any]) -> None:
 
     resources_dir = workspace / "src" / "api2app" / "resources"
     resources_dir.mkdir(parents=True, exist_ok=True)
+    briefcase_icon = workspace / BRIEFCASE_ICON
 
     if source_path:
         _generate_png_icons(source_path, resources_dir)
+        _generate_briefcase_png_icons(source_path, briefcase_icon)
 
     if ico_path:
         _generate_ico(ico_path, resources_dir / "icon.ico")
+        _generate_ico(ico_path, briefcase_icon.with_suffix(".ico"))
     elif source_path:
         _generate_ico(source_path, resources_dir / "icon.ico")
+        _generate_ico(source_path, briefcase_icon.with_suffix(".ico"))
 
 
 def _icon_path(value: str | None, label: str) -> Path | None:
@@ -464,38 +513,62 @@ def _generate_png_icons(source_image: Path, resources_dir: Path) -> None:
     except ImportError as exc:
         raise RuntimeError("Pillow is required to generate app icons. Install requirements.txt.") from exc
 
-    launcher_sizes = {
-        "mipmap-mdpi": 48,
-        "mipmap-hdpi": 72,
-        "mipmap-xhdpi": 96,
-        "mipmap-xxhdpi": 144,
-        "mipmap-xxxhdpi": 192,
-    }
-    splash_sizes = {
-        "mipmap-mdpi": 320,
-        "mipmap-hdpi": 480,
-        "mipmap-xhdpi": 640,
-        "mipmap-xxhdpi": 960,
-        "mipmap-xxxhdpi": 1280,
-    }
-
     with Image.open(source_image) as image:
-        for folder, size in launcher_sizes.items():
+        for folder, sizes in ANDROID_ICON_SIZES.items():
             target_dir = resources_dir / "android" / folder
             target_dir.mkdir(parents=True, exist_ok=True)
-            resized = _resize_to_square(image, size)
-            for filename in ("ic_launcher.png", "ic_launcher_round.png", "ic_launcher_foreground.png"):
-                resized.save(target_dir / filename, format="PNG")
-
-        for folder, size in splash_sizes.items():
-            target_dir = resources_dir / "android" / folder
-            target_dir.mkdir(parents=True, exist_ok=True)
-            splash = _resize_to_square(image, size, content_size=round(size * 0.6))
+            launcher = _resize_to_square(image, sizes["launcher"])
+            launcher.save(target_dir / "ic_launcher.png", format="PNG")
+            launcher.save(target_dir / "ic_launcher_round.png", format="PNG")
+            foreground = _resize_to_square(
+                image,
+                sizes["adaptive"],
+                content_size=round(sizes["adaptive"] * 0.66),
+            )
+            foreground.save(target_dir / "ic_launcher_foreground.png", format="PNG")
+            splash = _resize_to_square(
+                image,
+                sizes["splash"],
+                content_size=round(sizes["splash"] * 0.6),
+            )
             splash.save(target_dir / "splash.png", format="PNG")
 
         playstore = _resize_to_square(image, 512)
         (resources_dir / "android").mkdir(parents=True, exist_ok=True)
         playstore.save(resources_dir / "android" / "playstore-icon.png", format="PNG")
+
+
+def _generate_briefcase_png_icons(source_image: Path, icon_base: Path) -> None:
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise RuntimeError("Pillow is required to generate app icons. Install requirements.txt.") from exc
+
+    icon_base.parent.mkdir(parents=True, exist_ok=True)
+
+    with Image.open(source_image) as image:
+        for sizes in ANDROID_ICON_SIZES.values():
+            launcher = _resize_to_square(image, sizes["launcher"])
+            launcher.save(_briefcase_icon_path(icon_base, "square", sizes["launcher"]), format="PNG")
+            launcher.save(_briefcase_icon_path(icon_base, "round", sizes["launcher"]), format="PNG")
+
+            foreground = _resize_to_square(
+                image,
+                sizes["adaptive"],
+                content_size=round(sizes["adaptive"] * 0.66),
+            )
+            foreground.save(_briefcase_icon_path(icon_base, "adaptive", sizes["adaptive"]), format="PNG")
+
+            splash = _resize_to_square(
+                image,
+                sizes["splash"],
+                content_size=round(sizes["splash"] * 0.6),
+            )
+            splash.save(_briefcase_icon_path(icon_base, "square", sizes["splash"]), format="PNG")
+
+
+def _briefcase_icon_path(icon_base: Path, variant: str, size: int) -> Path:
+    return icon_base.with_name(f"{icon_base.name}-{variant}-{size}.png")
 
 
 def _generate_ico(source_image: Path, target_ico: Path) -> None:
@@ -504,6 +577,7 @@ def _generate_ico(source_image: Path, target_ico: Path) -> None:
     except ImportError as exc:
         raise RuntimeError("Pillow is required to generate Windows ICO. Install requirements.txt.") from exc
 
+    target_ico.parent.mkdir(parents=True, exist_ok=True)
     with Image.open(source_image) as image:
         _resize_to_square(image, 256).save(
             target_ico,
@@ -523,6 +597,32 @@ def _resize_to_square(image: Any, size: int, content_size: int | None = None) ->
     top = (size - resized.height) // 2
     canvas.alpha_composite(resized, (left, top))
     return canvas
+
+
+def _is_create_command(command: list[str], target: str) -> bool:
+    return len(command) >= 2 and command[-2:] == ["create", target]
+
+
+def _install_created_app_resources(workspace: Path, request: dict[str, Any], target: str, log) -> None:
+    if target != "android" or not (request.get("icon") or {}).get("source_path"):
+        return
+
+    source_dir = workspace / "src" / "api2app" / "resources" / "android"
+    target_dir = workspace / "build" / "api2app" / "android" / "gradle" / "app" / "src" / "main" / "res"
+    if not source_dir.exists() or not target_dir.exists():
+        return
+
+    copied = 0
+    for source_path in source_dir.glob("mipmap-*/*.png"):
+        relative_path = source_path.relative_to(source_dir)
+        target_path = target_dir / relative_path
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, target_path)
+        copied += 1
+
+    if copied:
+        log.write(f"Installed {copied} generated Android icon resources into Gradle res.\n\n")
+        log.flush()
 
 
 def _cleanup_request_assets(job: dict[str, Any], settings: Settings) -> None:
