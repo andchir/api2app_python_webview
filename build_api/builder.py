@@ -174,6 +174,7 @@ async def run_build(job: dict[str, Any], settings: Settings) -> dict[str, Any]:
         artifact = _find_artifact(workspace, target, package_format)
         copied_artifact = artifact_dir / artifact.name
         shutil.copy2(artifact, copied_artifact)
+        stored_log_path = _stored_log_path(log_path, workspace, artifact_dir)
 
         return {
             "job_id": job_id,
@@ -185,11 +186,12 @@ async def run_build(job: dict[str, Any], settings: Settings) -> dict[str, Any]:
             "finished_at": utc_now(),
             "artifact_name": copied_artifact.name,
             "artifact_path": str(copied_artifact),
-            "log_path": str(log_path),
+            "log_path": str(stored_log_path),
             "message": "Build completed.",
         }
     except Exception as exc:
         _append_failure(log_path, exc)
+        stored_log_path = _stored_log_path(log_path, workspace, artifact_dir)
         return {
             "job_id": job_id,
             "target": target,
@@ -198,7 +200,7 @@ async def run_build(job: dict[str, Any], settings: Settings) -> dict[str, Any]:
             "updated_at": utc_now(),
             "started_at": job.get("started_at"),
             "finished_at": utc_now(),
-            "log_path": str(log_path),
+            "log_path": str(stored_log_path),
             "message": str(exc),
         }
     finally:
@@ -365,6 +367,51 @@ def log_path(job_id: str, settings: Settings) -> Path | None:
     if path.exists() and path.is_file():
         return path
     return None
+
+
+def _stored_log_path(wrapper_log_path: Path, workspace: Path, artifact_dir: Path) -> Path:
+    briefcase_log_path = _briefcase_saved_log_path(wrapper_log_path, workspace)
+    if not briefcase_log_path:
+        return wrapper_log_path
+
+    stored_path = artifact_dir / briefcase_log_path.name
+    if stored_path == wrapper_log_path:
+        return wrapper_log_path
+
+    try:
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(briefcase_log_path, stored_path)
+    except OSError:
+        return wrapper_log_path
+    return stored_path
+
+
+def _briefcase_saved_log_path(wrapper_log_path: Path, workspace: Path) -> Path | None:
+    try:
+        wrapper_log = wrapper_log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+    matches = re.findall(r"^Log saved to (?P<path>.+?)\s*$", wrapper_log, flags=re.MULTILINE)
+    workspace_root = workspace.resolve()
+    for value in reversed(matches):
+        path = Path(value.strip())
+        if not path.is_absolute():
+            path = workspace / path
+        resolved_path = path.resolve()
+        if not _is_relative_to(resolved_path, workspace_root):
+            continue
+        if resolved_path.exists() and resolved_path.is_file():
+            return resolved_path
+    return None
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
 
 
 def _copy_project(source: Path, workspace: Path) -> None:
