@@ -310,7 +310,7 @@ async def get_job_status(job_id: str, request: Request) -> JobStatusResponse:
     return _status_response(status, request)
 
 
-@app.get("/jobs/{job_id}/download", dependencies=[Depends(require_api_key)])
+@app.get("/jobs/{job_id}/download", dependencies=[])
 async def download_artifact(job_id: str) -> FileResponse:
     result = load_result(job_id, settings)
     if not result:
