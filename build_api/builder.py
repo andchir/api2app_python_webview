@@ -273,19 +273,19 @@ def strip_markdown_code_fence(source: str) -> str:
     if not text:
         return text
 
-    lines = text.splitlines()
-    opening = re.match(r"^\s*(`{3,}|~{3,}).*$", lines[0])
-    if not opening:
+    lines = text.split('\n')
+
+    if len(lines) < 2:
         return text
 
-    marker = opening.group(1)
-    closing = re.match(rf"^\s*{re.escape(marker)}\s*$", lines[-1])
-    if closing:
-        lines = lines[1:-1]
-    else:
+    first_line = lines[0].strip()
+    if first_line.startswith('```'):
         lines = lines[1:]
 
-    return "\n".join(lines).strip()
+    if lines and lines[-1].strip() == '```':
+        lines = lines[:-1]
+
+    return '\n'.join(lines)
 
 
 def validate_html_document(source: str) -> str:
