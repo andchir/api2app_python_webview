@@ -273,19 +273,10 @@ def strip_markdown_code_fence(source: str) -> str:
     if not text:
         return text
 
-    lines = text.split('\n')
+    text = re.sub(r'^```html\n?', '', text)
+    text = re.sub(r'\n?```$', '', text)
 
-    if len(lines) < 2:
-        return text
-
-    first_line = lines[0].strip()
-    if first_line.startswith('```'):
-        lines = lines[1:]
-
-    if lines and lines[-1].strip() == '```':
-        lines = lines[:-1]
-
-    return '\n'.join(lines)
+    return text
 
 
 def validate_html_document(source: str) -> str:
