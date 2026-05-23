@@ -11,6 +11,10 @@ from typing import Any
 from .config import Settings
 
 
+MOBILE_VIEWPORT_META = (
+    '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
+)
+
 APP_TEMPLATE = '''from importlib import resources
 import json
 
@@ -70,6 +74,8 @@ def _configure_webview_zoom(webview):
         except Exception:
             settings = None
         if settings:
+            _call_native_method(settings, "setUseWideViewPort", True)
+            _call_native_method(settings, "setLoadWithOverviewMode", False)
             _call_native_method(settings, "setSupportZoom", False)
             _call_native_method(settings, "setBuiltInZoomControls", False)
             _call_native_method(settings, "setDisplayZoomControls", False)
@@ -361,7 +367,15 @@ def compose_html(request: dict[str, Any]) -> str:
     js = strip_markdown_code_fence(request.get("js", ""))
     document = html.strip()
     if "<html" not in document.lower():
-        document = f'<!doctype html>\n<html>\n<head><meta charset="utf-8"></head>\n<body>\n{document}\n</body>\n</html>'
+        document = (
+            "<!doctype html>\n"
+            "<html>\n"
+            f"<head><meta charset=\"utf-8\">\n{MOBILE_VIEWPORT_META}</head>\n"
+            f"<body>\n{document}\n</body>\n"
+            "</html>"
+        )
+
+    document = _ensure_mobile_viewport(document)
 
     if css:
         css_tag = f"\n<style>\n{css}\n</style>\n"
@@ -372,6 +386,29 @@ def compose_html(request: dict[str, Any]) -> str:
         document = _insert_before(document, "</body>", script_tag)
 
     return document
+
+
+def _ensure_mobile_viewport(document: str) -> str:
+    if _has_viewport_meta(document):
+        return document
+
+    return _insert_before(
+        document,
+        "</head>",
+        f"\n{MOBILE_VIEWPORT_META}\n",
+        fallback_before="</body>",
+    )
+
+
+def _has_viewport_meta(document: str) -> bool:
+    name_viewport = re.compile(
+        r"\bname\s*=\s*(?:([\"'])viewport\1|viewport(?=[\s/>]))",
+        flags=re.IGNORECASE,
+    )
+    return any(
+        name_viewport.search(match.group(0))
+        for match in re.finditer(r"<meta\b[^>]*>", document, flags=re.IGNORECASE)
+    )
 
 
 def artifact_path(job_id: str, settings: Settings) -> Path | None:
