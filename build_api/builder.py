@@ -51,6 +51,11 @@ def _command_id(index):
     return f"api2app-menu-{index}"
 
 
+def _menu_group_label(menu):
+    label = str(menu.get("label") or menu.get("title") or "Menu").strip()
+    return label or "Menu"
+
+
 class GeneratedWebApp(toga.App):
     def startup(self):
         config = _load_generated_config()
@@ -90,15 +95,20 @@ class GeneratedWebApp(toga.App):
         if not menu.get("enabled", True):
             return
 
-        target = self.main_window.toolbar if menu.get("position", "top") == "top" else self.commands
+        menu_group = toga.Group(
+            _menu_group_label(menu),
+            order=0,
+            id="api2app-menu",
+        )
         for index, item in enumerate(menu.get("items") or []):
             label = str(item.get("label") or "").strip()
             if not label:
                 continue
-            target.add(
+            self.commands.add(
                 toga.Command(
                     self._menu_action(item),
                     text=label,
+                    group=menu_group,
                     order=index,
                     id=_command_id(index),
                 )
@@ -454,21 +464,34 @@ def _generate_png_icons(source_image: Path, resources_dir: Path) -> None:
     except ImportError as exc:
         raise RuntimeError("Pillow is required to generate app icons. Install requirements.txt.") from exc
 
-    sizes = {
+    launcher_sizes = {
         "mipmap-mdpi": 48,
         "mipmap-hdpi": 72,
         "mipmap-xhdpi": 96,
         "mipmap-xxhdpi": 144,
         "mipmap-xxxhdpi": 192,
     }
+    splash_sizes = {
+        "mipmap-mdpi": 320,
+        "mipmap-hdpi": 480,
+        "mipmap-xhdpi": 640,
+        "mipmap-xxhdpi": 960,
+        "mipmap-xxxhdpi": 1280,
+    }
 
     with Image.open(source_image) as image:
-        for folder, size in sizes.items():
+        for folder, size in launcher_sizes.items():
             target_dir = resources_dir / "android" / folder
             target_dir.mkdir(parents=True, exist_ok=True)
             resized = _resize_to_square(image, size)
             for filename in ("ic_launcher.png", "ic_launcher_round.png", "ic_launcher_foreground.png"):
                 resized.save(target_dir / filename, format="PNG")
+
+        for folder, size in splash_sizes.items():
+            target_dir = resources_dir / "android" / folder
+            target_dir.mkdir(parents=True, exist_ok=True)
+            splash = _resize_to_square(image, size, content_size=round(size * 0.6))
+            splash.save(target_dir / "splash.png", format="PNG")
 
         playstore = _resize_to_square(image, 512)
         (resources_dir / "android").mkdir(parents=True, exist_ok=True)
@@ -489,11 +512,12 @@ def _generate_ico(source_image: Path, target_ico: Path) -> None:
         )
 
 
-def _resize_to_square(image: Any, size: int) -> Any:
+def _resize_to_square(image: Any, size: int, content_size: int | None = None) -> Any:
     from PIL import Image
 
+    content_size = content_size or size
     resized = image.convert("RGBA")
-    resized.thumbnail((size, size), Image.LANCZOS)
+    resized.thumbnail((content_size, content_size), Image.LANCZOS)
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     left = (size - resized.width) // 2
     top = (size - resized.height) // 2

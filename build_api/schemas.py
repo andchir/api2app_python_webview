@@ -30,7 +30,10 @@ class MenuItem(BaseModel):
 
 class MenuOptions(BaseModel):
     enabled: bool = Field(True, description="Create native menu commands with the submitted items.")
-    position: MenuPosition = Field("top", description="Menu position relative to the submitted HTML.")
+    position: MenuPosition = Field(
+        "top",
+        description="Preferred menu position. Native clients may render this as a platform menu or overflow button.",
+    )
     items: list[MenuItem] = Field(default_factory=list)
     background_color: str = Field("#f8fafc", max_length=40)
     text_color: str = Field("#111827", max_length=40)
@@ -39,7 +42,7 @@ class MenuOptions(BaseModel):
 class AppIconOptions(BaseModel):
     source_path: str | None = Field(
         None,
-        description="Internal path to uploaded or downloaded source image. Used to generate Android icons and Windows ICO.",
+        description="Internal path to uploaded or downloaded source image. Used to generate Android icons, Android splash images, and Windows ICO.",
     )
     ico_path: str | None = Field(
         None,

@@ -13,8 +13,10 @@ tags are required.
 
 Header fields use names such as `header_title`. Header and menu settings are
 rendered through native Toga/Android controls, not injected into the submitted
-HTML. Menu items can be sent as a JSON array in the `menu_items` form field or
-as repeated `menu_label`, `menu_href`, and `menu_onclick` fields.
+HTML. Menu items are installed as native app commands, so platforms can show
+them in a drop-down or overflow menu instead of a horizontal toolbar. Menu items
+can be sent as a JSON array in the `menu_items` form field or as repeated
+`menu_label`, `menu_href`, and `menu_onclick` fields.
 
 ## Run
 
@@ -74,7 +76,7 @@ curl -X POST http://localhost:8000/build/android \
 For app icons, pass either `icon_file=@/path/to/image.png` or
 `icon_url=https://example.com/icon.png`. The source image can be PNG, JPG, WEBP,
 BMP, GIF, or ICO; it is converted and resized automatically for Android launcher
-icons, the Play Store icon, and the Windows ICO file. To override only the
-Windows icon, use `ico_file` or `ico_url`. Downloaded/uploaded source images are
-stored under `build_api/runtime/uploads` only while the queued build needs them
-and are deleted after the build finishes or fails.
+icons, Android splash images, the Play Store icon, and the Windows ICO file. To
+override only the Windows icon, use `ico_file` or `ico_url`. Downloaded/uploaded
+source images are stored under `build_api/runtime/uploads` only while the queued
+build needs them and are deleted after the build finishes or fails.

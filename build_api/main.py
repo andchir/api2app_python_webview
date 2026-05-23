@@ -66,7 +66,12 @@ COMMON_FORM_PROPERTIES: dict[str, Any] = {
     "header_background_color": {"type": "string", "default": "#111827"},
     "header_text_color": {"type": "string", "default": "#ffffff"},
     "menu_enabled": {"type": "boolean"},
-    "menu_position": {"type": "string", "enum": ["top", "bottom"], "default": "top"},
+    "menu_position": {
+        "type": "string",
+        "enum": ["top", "bottom"],
+        "default": "top",
+        "description": "Preferred menu position; native apps may render it as a platform menu or overflow button.",
+    },
     "menu_background_color": {"type": "string", "default": "#f8fafc"},
     "menu_text_color": {"type": "string", "default": "#111827"},
     "menu_items": {
