@@ -47,6 +47,37 @@ def _set_webview_content(webview, html):
         webview.set_content("https://api2app.local/", html)
 
 
+def _call_native_method(target, method_name, *args):
+    method = getattr(target, method_name, None)
+    if not method:
+        return
+
+    try:
+        method(*args)
+    except Exception:
+        pass
+
+
+def _configure_webview_zoom(webview):
+    native = getattr(getattr(webview, "_impl", None), "native", None)
+    if not native:
+        return
+
+    get_settings = getattr(native, "getSettings", None)
+    if get_settings:
+        try:
+            settings = get_settings()
+        except Exception:
+            settings = None
+        if settings:
+            _call_native_method(settings, "setSupportZoom", False)
+            _call_native_method(settings, "setBuiltInZoomControls", False)
+            _call_native_method(settings, "setDisplayZoomControls", False)
+            _call_native_method(settings, "setTextZoom", 100)
+
+    _call_native_method(native, "setInitialScale", 100)
+
+
 def _command_id(index):
     return f"api2app-menu-{index}"
 
@@ -79,6 +110,7 @@ class GeneratedWebApp(toga.App):
 
         webview = toga.WebView(style=Pack(flex=1))
         self.webview = webview
+        _configure_webview_zoom(webview)
         _set_webview_content(webview, html)
         self._install_native_menu(config.get("menu") or {})
         box = toga.Box(children=[webview], style=Pack(direction=COLUMN, flex=1))
