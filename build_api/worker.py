@@ -19,6 +19,17 @@ from .config import Settings
 from .queue_store import QueueStore
 
 
+class SourceTooLargeError(ValueError):
+    """Raised when the serialised source payload exceeds ``max_source_bytes``."""
+
+    def __init__(self, total: int, limit: int) -> None:
+        super().__init__(
+            f"Source payload is too large: {total} bytes, limit is {limit} bytes"
+        )
+        self.total = total
+        self.limit = limit
+
+
 class BuildQueue:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -132,6 +143,4 @@ class BuildQueue:
     def _validate_source_size(self, request: dict[str, Any]) -> None:
         total = len(json.dumps(request, ensure_ascii=False).encode("utf-8"))
         if total > self.settings.max_source_bytes:
-            raise ValueError(
-                f"Source payload is too large: {total} bytes, limit is {self.settings.max_source_bytes} bytes"
-            )
+            raise SourceTooLargeError(total, self.settings.max_source_bytes)

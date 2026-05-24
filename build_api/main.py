@@ -12,14 +12,16 @@ from urllib.parse import urlparse
 import requests
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
 
 from .builder import artifact_path, delete_result, is_result_expired, load_result, log_path
 from .config import Settings
+from .i18n import parse_accept_language, set_language, t, translate_pydantic_errors
 from .schemas import (
     ActiveJobsResponse,
     AndroidBuildRequest,
@@ -28,7 +30,7 @@ from .schemas import (
     WindowsBuildRequest,
     model_to_dict,
 )
-from .worker import BuildQueue
+from .worker import BuildQueue, SourceTooLargeError
 
 
 settings = Settings.load()
@@ -229,6 +231,32 @@ app = FastAPI(
 )
 
 
+# ---------------------------------------------------------------------------
+# Language middleware — set language from Accept-Language before every request
+# ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def language_middleware(request: Request, call_next):
+    lang = parse_accept_language(request.headers.get("Accept-Language"))
+    set_language(lang)
+    return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# Global validation error handler (Pydantic / FastAPI auto-validation)
+# ---------------------------------------------------------------------------
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    lang = parse_accept_language(request.headers.get("Accept-Language"))
+    errors = translate_pydantic_errors(jsonable_encoder(exc.errors()), lang)
+    return JSONResponse(status_code=422, content={"detail": errors})
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle
+# ---------------------------------------------------------------------------
+
 @app.on_event("startup")
 async def startup() -> None:
     await build_queue.start()
@@ -239,11 +267,16 @@ async def shutdown() -> None:
     await build_queue.stop()
 
 
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html() -> HTMLResponse:
     response = get_swagger_ui_html(
         openapi_url=app.openapi_url,
         title=f"{app.title} - Swagger UI",
+        swagger_ui_parameters={"persistAuthorization": True},
     )
     html = response.body.decode("utf-8")
     html = html.replace("</body>", f"{_swagger_textarea_script()}\n</body>")
@@ -260,11 +293,14 @@ async def health() -> dict:
     }
 
 
-async def require_api_key(api_key: str | None = Security(api_key_header)) -> None:
+async def require_api_key(
+    request: Request,
+    api_key: str | None = Security(api_key_header),
+) -> None:
     if not settings.api_key:
-        raise HTTPException(status_code=500, detail="BUILD_API_KEY is not configured")
+        raise HTTPException(status_code=500, detail=t("api_key_not_configured"))
     if api_key is None or not hmac.compare_digest(api_key, settings.api_key):
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+        raise HTTPException(status_code=401, detail=t("invalid_api_key"))
 
 
 @app.post(
@@ -313,24 +349,27 @@ async def list_jobs(request: Request) -> ActiveJobsResponse:
 async def get_job_status(job_id: str, request: Request) -> JobStatusResponse:
     status = build_queue.get_status(job_id)
     if not status:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail=t("job_not_found"))
     return _status_response(status, request)
 
 
 @app.get("/jobs/{job_id}/download", dependencies=[])
-async def download_artifact(job_id: str) -> FileResponse:
+async def download_artifact(job_id: str, request: Request) -> FileResponse:
     result = load_result(job_id, settings)
     if not result:
-        raise HTTPException(status_code=404, detail="Job not found or not finished yet")
+        raise HTTPException(status_code=404, detail=t("job_not_found_or_not_finished"))
     if is_result_expired(result):
         delete_result(job_id, settings)
-        raise HTTPException(status_code=404, detail="Job result expired")
+        raise HTTPException(status_code=404, detail=t("job_result_expired"))
     if result.get("status") != "completed":
-        raise HTTPException(status_code=409, detail=result.get("message", "Build is not completed"))
+        raise HTTPException(
+            status_code=409,
+            detail=result.get("message") or t("build_not_completed"),
+        )
 
     path = artifact_path(job_id, settings)
     if not path:
-        raise HTTPException(status_code=404, detail="Artifact file not found")
+        raise HTTPException(status_code=404, detail=t("artifact_not_found"))
 
     return FileResponse(
         path,
@@ -340,20 +379,29 @@ async def download_artifact(job_id: str) -> FileResponse:
 
 
 @app.get("/jobs/{job_id}/log", dependencies=[Depends(require_api_key)])
-async def download_log(job_id: str) -> FileResponse:
+async def download_log(job_id: str, request: Request) -> FileResponse:
     result = load_result(job_id, settings)
     if result and is_result_expired(result):
         delete_result(job_id, settings)
-        raise HTTPException(status_code=404, detail="Job result expired")
+        raise HTTPException(status_code=404, detail=t("job_result_expired"))
     path = log_path(job_id, settings)
     if not path:
-        raise HTTPException(status_code=404, detail="Log file not found")
+        raise HTTPException(status_code=404, detail=t("log_not_found"))
     return FileResponse(path, filename=f"{job_id}.log", media_type="text/plain")
 
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 async def _enqueue_or_413(target: str, payload: dict, package_format: str | None) -> dict:
     try:
         return await build_queue.enqueue(target, payload, package_format)
+    except SourceTooLargeError as exc:
+        raise HTTPException(
+            status_code=413,
+            detail=t("source_too_large", total=exc.total, limit=exc.limit),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
 
@@ -389,7 +437,7 @@ async def _read_form(request: Request) -> Any:
         if "python-multipart" in str(exc):
             raise HTTPException(
                 status_code=500,
-                detail="python-multipart is required for form uploads. Install requirements.txt.",
+                detail=t("missing_multipart"),
             ) from exc
         raise
 
@@ -477,9 +525,9 @@ def _menu_items_from_form(form: Any) -> list[dict[str, Any]] | None:
         try:
             parsed = json.loads(raw_items)
         except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=422, detail="menu_items must be a valid JSON array") from exc
+            raise HTTPException(status_code=422, detail=t("menu_items_invalid_json")) from exc
         if not isinstance(parsed, list):
-            raise HTTPException(status_code=422, detail="menu_items must be a JSON array")
+            raise HTTPException(status_code=422, detail=t("menu_items_not_array"))
         return parsed
 
     labels = _text_list(form, "menu_label")
@@ -507,9 +555,9 @@ async def _store_icon_assets(form: Any) -> tuple[dict[str, Any] | None, Path | N
     ico_url = _first_optional_text(form, "ico_url", "windows_icon_url")
 
     if icon_file and icon_url:
-        raise HTTPException(status_code=422, detail="Use either icon_file or icon_url, not both")
+        raise HTTPException(status_code=422, detail=t("icon_file_and_url"))
     if ico_file and ico_url:
-        raise HTTPException(status_code=422, detail="Use either ico_file or ico_url, not both")
+        raise HTTPException(status_code=422, detail=t("ico_file_and_url"))
     if not any((icon_file, icon_url, ico_file, ico_url)):
         return None, None
 
@@ -550,7 +598,7 @@ async def _save_upload_image(upload: UploadFile, assets_dir: Path, stem: str, fi
                 if total > settings.max_image_bytes:
                     raise HTTPException(
                         status_code=413,
-                        detail=f"{field_name} is too large: limit is {settings.max_image_bytes} bytes",
+                        detail=t("image_too_large", field=field_name, limit=settings.max_image_bytes),
                     )
                 output.write(chunk)
     finally:
@@ -558,7 +606,7 @@ async def _save_upload_image(upload: UploadFile, assets_dir: Path, stem: str, fi
 
     if total == 0:
         target.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail=f"{field_name} is empty")
+        raise HTTPException(status_code=422, detail=t("image_empty", field=field_name))
 
     _validate_image_file(target, field_name)
     return target
@@ -568,7 +616,7 @@ def _download_image(url: str, assets_dir: Path, stem: str, field_name: str) -> P
     cleaned_url = url.strip()
     parsed = urlparse(cleaned_url)
     if parsed.scheme not in {"http", "https"}:
-        raise HTTPException(status_code=422, detail=f"{field_name} must be an http or https URL")
+        raise HTTPException(status_code=422, detail=t("image_must_be_http_url", field=field_name))
 
     response: requests.Response | None = None
     try:
@@ -577,12 +625,15 @@ def _download_image(url: str, assets_dir: Path, stem: str, field_name: str) -> P
     except requests.RequestException as exc:
         if response is not None:
             response.close()
-        raise HTTPException(status_code=400, detail=f"Could not download {field_name}: {exc}") from exc
+        raise HTTPException(
+            status_code=400,
+            detail=t("image_download_failed", field=field_name, exc=exc),
+        ) from exc
 
     try:
         content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
         if content_type and not content_type.startswith("image/"):
-            raise HTTPException(status_code=422, detail=f"{field_name} URL must return an image")
+            raise HTTPException(status_code=422, detail=t("image_url_not_image", field=field_name))
 
         suffix = _safe_image_suffix(Path(parsed.path).suffix)
         if suffix == ".img":
@@ -597,13 +648,13 @@ def _download_image(url: str, assets_dir: Path, stem: str, field_name: str) -> P
                 if total > settings.max_image_bytes:
                     raise HTTPException(
                         status_code=413,
-                        detail=f"{field_name} is too large: limit is {settings.max_image_bytes} bytes",
+                        detail=t("image_too_large", field=field_name, limit=settings.max_image_bytes),
                     )
                 output.write(chunk)
 
         if total == 0:
             target.unlink(missing_ok=True)
-            raise HTTPException(status_code=422, detail=f"{field_name} URL returned an empty file")
+            raise HTTPException(status_code=422, detail=t("image_url_empty", field=field_name))
 
         _validate_image_file(target, field_name)
         return target
@@ -617,7 +668,7 @@ def _validate_image_file(path: Path, field_name: str) -> None:
     except ImportError as exc:
         raise HTTPException(
             status_code=500,
-            detail="Pillow is required to validate image uploads. Install requirements.txt.",
+            detail=t("missing_pillow"),
         ) from exc
 
     try:
@@ -626,11 +677,11 @@ def _validate_image_file(path: Path, field_name: str) -> None:
             image.verify()
     except Exception as exc:
         path.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail=f"{field_name} must be a valid image file") from exc
+        raise HTTPException(status_code=422, detail=t("image_invalid", field=field_name)) from exc
 
     if width < 1 or height < 1:
         path.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail=f"{field_name} must have non-zero dimensions")
+        raise HTTPException(status_code=422, detail=t("image_zero_dimensions", field=field_name))
 
 
 def _validated_payload(
@@ -640,7 +691,8 @@ def _validated_payload(
     try:
         return model_to_dict(model_class(**payload))
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=jsonable_encoder(exc.errors())) from exc
+        errors = translate_pydantic_errors(jsonable_encoder(exc.errors()))
+        raise HTTPException(status_code=422, detail=errors) from exc
 
 
 def _json_object_field(form: Any, name: str) -> dict[str, Any] | None:
@@ -650,9 +702,9 @@ def _json_object_field(form: Any, name: str) -> dict[str, Any] | None:
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=422, detail=f"{name} must be a valid JSON object") from exc
+        raise HTTPException(status_code=422, detail=t("field_must_be_json_object", field=name)) from exc
     if not isinstance(parsed, dict):
-        raise HTTPException(status_code=422, detail=f"{name} must be a JSON object")
+        raise HTTPException(status_code=422, detail=t("field_not_json_object", field=name))
     return parsed
 
 
@@ -661,14 +713,14 @@ def _text(form: Any, name: str, default: str) -> str:
     if value is None:
         return default
     if _is_upload(value):
-        raise HTTPException(status_code=422, detail=f"{name} must be a form field, not a file")
+        raise HTTPException(status_code=422, detail=t("field_must_be_form_not_file", field=name))
     return str(value)
 
 
 def _required_text(form: Any, name: str) -> str:
     value = _optional_text(form, name)
     if value is None:
-        raise HTTPException(status_code=422, detail=f"Missing required form field: {name}")
+        raise HTTPException(status_code=422, detail=t("field_required", field=name))
     return value
 
 
@@ -677,7 +729,7 @@ def _optional_text(form: Any, name: str) -> str | None:
     if value is None:
         return None
     if _is_upload(value):
-        raise HTTPException(status_code=422, detail=f"{name} must be a form field, not a file")
+        raise HTTPException(status_code=422, detail=t("field_must_be_form_not_file", field=name))
     text = str(value)
     return text if text != "" else None
 
@@ -700,14 +752,14 @@ def _optional_bool(form: Any, name: str) -> bool | None:
         return True
     if normalized in FALSE_FORM_VALUES:
         return False
-    raise HTTPException(status_code=422, detail=f"{name} must be a boolean value")
+    raise HTTPException(status_code=422, detail=t("field_must_be_boolean", field=name))
 
 
 def _text_list(form: Any, name: str) -> list[str]:
     values = []
     for value in form.getlist(name):
         if _is_upload(value):
-            raise HTTPException(status_code=422, detail=f"{name} must be a form field, not a file")
+            raise HTTPException(status_code=422, detail=t("field_must_be_form_not_file", field=name))
         text = str(value)
         if text:
             values.append(text)
@@ -720,7 +772,7 @@ def _file_field(form: Any, *names: str) -> UploadFile | None:
         if value is None:
             continue
         if not _is_upload(value):
-            raise HTTPException(status_code=422, detail=f"{name} must be a file field")
+            raise HTTPException(status_code=422, detail=t("field_must_be_file", field=name))
         if value.filename:
             return value
     return None
