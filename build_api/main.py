@@ -772,7 +772,7 @@ def _file_field(form: Any, *names: str) -> UploadFile | None:
         if value is None:
             continue
         if not _is_upload(value):
-            raise HTTPException(status_code=422, detail=t("field_must_be_file", field=name))
+            continue
         if value.filename:
             return value
     return None

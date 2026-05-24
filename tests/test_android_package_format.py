@@ -70,6 +70,18 @@ def test_android_form_payload_accepts_aab() -> None:
     assert payload["package_format"] == "aab"
 
 
+def test_icon_file_fields_ignore_non_file_values() -> None:
+    payload, assets_dir = asyncio.run(
+        _payload_from_form(
+            FakeRequest(FormData({"html": HTML, "icon_file": "", "ico_file": "not-a-file"})),
+            AndroidBuildRequest,
+        )
+    )
+
+    assert assets_dir is None
+    assert "icon" not in payload
+
+
 def test_android_openapi_includes_package_format() -> None:
     extra = _form_openapi_extra(include_android_format=True)
     properties = extra["requestBody"]["content"]["multipart/form-data"]["schema"][
