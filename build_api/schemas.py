@@ -63,7 +63,14 @@ class SourceBuildRequest(BaseModel):
     css: str = Field("", description="CSS code appended to the HTML.")
     js: str = Field("", description="JavaScript code appended to the HTML.")
     app_name: str = Field("api2app generated", min_length=1, max_length=80)
-    bundle: str = Field("com.api2app.generated", min_length=3, max_length=120)
+    bundle: str = Field(
+        "",
+        max_length=120,
+        description=(
+            "Bundle identifier prefix (reverse DNS). Leave empty to derive a "
+            "unique bundle from app_name via transliteration."
+        ),
+    )
     version: str = Field("0.0.1", min_length=1, max_length=30)
     description: str = Field("Generated WebView application", max_length=300)
     header: HeaderOptions | None = Field(None, description="Native app header settings.")

@@ -57,7 +57,14 @@ COMMON_FORM_PROPERTIES: dict[str, Any] = {
         "default": "",
     },
     "app_name": {"type": "string", "default": "api2app generated"},
-    "bundle": {"type": "string", "default": "com.api2app.generated"},
+    "bundle": {
+        "type": "string",
+        "default": "",
+        "description": (
+            "Bundle identifier prefix (reverse DNS). Leave empty to derive a "
+            "unique bundle from app_name via transliteration."
+        ),
+    },
     "version": {"type": "string", "default": "0.0.1"},
     "description": {"type": "string", "default": "Generated WebView application"},
     "header_enabled": {"type": "boolean"},
@@ -393,7 +400,7 @@ def _source_payload_from_form(form: Any) -> dict[str, Any]:
         "css": _text(form, "css", ""),
         "js": _text(form, "js", ""),
         "app_name": _text(form, "app_name", "api2app generated"),
-        "bundle": _text(form, "bundle", "com.api2app.generated"),
+        "bundle": _text(form, "bundle", ""),
         "version": _text(form, "version", "0.0.1"),
         "description": _text(form, "description", "Generated WebView application"),
     }

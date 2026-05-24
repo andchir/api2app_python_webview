@@ -9,6 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings
+from .translit import (
+    DEFAULT_BUNDLE,
+    artifact_basename,
+    normalize_bundle,
+    sanitize_display_text,
+    slugify_filename,
+)
 
 
 MOBILE_VIEWPORT_META = (
@@ -210,7 +217,7 @@ async def run_build(job: dict[str, Any], settings: Settings) -> dict[str, Any]:
                     _install_created_app_resources(workspace, job["request"], target, log)
 
         artifact = _find_artifact(workspace, target, package_format)
-        copied_artifact = artifact_dir / artifact.name
+        copied_artifact = artifact_dir / _artifact_filename(job["request"], artifact.suffix)
         shutil.copy2(artifact, copied_artifact)
         stored_log_path = _stored_log_path(log_path, workspace, artifact_dir)
 
@@ -523,12 +530,15 @@ def _native_app_config(request: dict[str, Any]) -> dict[str, Any]:
 
 def _patch_pyproject(pyproject_path: Path, request: dict[str, Any]) -> None:
     text = pyproject_path.read_text(encoding="utf-8")
+    app_name = sanitize_display_text(request.get("app_name"), default="api2app generated")
     replacements = {
-        "project_name": request.get("app_name", "api2app generated"),
-        "version": request.get("version", "0.0.1"),
-        "bundle": request.get("bundle", "com.api2app.generated"),
-        "formal_name": request.get("app_name", "api2app generated"),
-        "description": request.get("description", "Generated WebView application"),
+        "project_name": slugify_filename(app_name, default="api2app-generated"),
+        "version": slugify_filename(request.get("version"), default="0.0.1"),
+        "bundle": normalize_bundle(request.get("bundle"), app_name),
+        "formal_name": app_name,
+        "description": sanitize_display_text(
+            request.get("description"), default="Generated WebView application"
+        ),
     }
 
     for key, value in replacements.items():
@@ -787,6 +797,15 @@ async def _run_command(command: list[str], cwd: Path, log, timeout_seconds: int)
     log.flush()
     if return_code != 0:
         raise RuntimeError(f"Build command failed with exit code {return_code}: {' '.join(command)}")
+
+
+def _artifact_filename(request: dict[str, Any], suffix: str) -> str:
+    basename = artifact_basename(
+        request.get("app_name"),
+        request.get("version"),
+        default_app="api2app-generated",
+    )
+    return f"{basename}{suffix}"
 
 
 def _find_artifact(workspace: Path, target: str, package_format: str | None) -> Path:
